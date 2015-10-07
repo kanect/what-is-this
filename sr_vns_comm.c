@@ -545,6 +545,7 @@ sr_ether_addrs_match_interface( struct sr_instance* sr, /* borrowed */
      * to a virtual interface) ensure it is going to the correct topology
      * Note: This check should really be done server side ...
      */
+    /*not real code */
 
     return 1;
 
