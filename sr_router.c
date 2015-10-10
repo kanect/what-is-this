@@ -15,6 +15,7 @@
 #include <assert.h>
 
 
+
 #include "sr_if.h"
 #include "sr_rt.h"
 #include "sr_router.h"
@@ -22,6 +23,8 @@
 #include "sr_arpcache.h"
 #include "sr_utils.h"
 
+#include <stdlib.h>
+#include <string.h>
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -79,6 +82,64 @@ void sr_handlepacket(struct sr_instance* sr,
   printf("*** -> Received packet of length %d \n",len);
 
   /* fill in code here */
+  sr_ethernet_hdr_t *header;
+  header = malloc(sizeof(sr_ethernet_hdr_t));
+  if (header != NULL) 
+  {
+	memcpy(header, packet, sizeof(sr_ethernet_hdr_t));	
+  }
+  
+  
+  /*printf("Dest:%u %u %u %u %u %u", header->ether_dhost[0], header->ether_dhost[1], header->ether_dhost[2], header->ether_dhost[3], header->ether_dhost[4], header->ether_dhost[5]);*/
+  
+ 
 
+ 
+    /* Ethernet */
+  int minlength = sizeof(sr_ethernet_hdr_t);
+  if (len < minlength) {
+    fprintf(stderr, "Failed to print ETHERNET header, insufficient length\n");
+    return;
+  }
+
+  uint16_t ethtype = ethertype(packet);
+  
+  if(ethtype == ethertype_ip)/*IP packet*/
+  {
+    
+  }
+  else if (ethtype == ethertype_arp) /*ARP packet*/
+  {
+    fprintf(stderr, "ARP packet recieved\n");
+    sr_handle_arp(sr, packet + sizeof(sr_ethernet_hdr_t), interface);
+  }
+
+  		
+  
 }/* end sr_ForwardPacket */
+
+/*Handles recived ARP packet*/
+
+void sr_handle_arp(struct sr_instance* sr,
+        uint8_t *arp_hdr_bits,
+        char* interface/* lent */)
+{
+    sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *)arp_hdr_bits;
+    unsigned short arp_op = ntohs(arp_header->ar_op);
+    if (arp_op == arp_op_request)
+    {
+        fprintf(stderr, "ARP request recieved.\n");
+
+        /*Check if this targets IP is the routers address, if not drop the packet*/
+    }
+    else if (arp_op== arp_op_reply)
+    {
+        fprintf(stderr, "ARP response recieved.\n");
+    }
+    else
+    {
+        fprintf(stderr, "Unsupported ARP op.\n");
+    }
+    return;
+}
 
