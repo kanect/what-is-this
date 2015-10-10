@@ -18,6 +18,33 @@
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
     /* Fill this in */
+    time_t now = time(0); /*Get current time*/
+    		
+    struct sr_arpcache cache = sr->cache;
+    struct sr_arpreq *requests;
+    requests = cache.requests;
+    while (requests != NULL)
+    {
+	fprintf(stderr, "Ran\n");
+        if (difftime(now, requests->sent) > 1.0)
+        {
+            if (requests->times_sent >= 5) /*Sent too many times*/
+            {
+            /*Make a icmp packet for host unreachable*/
+
+		 /*Not sure if sr_arpreq_destroy(requests) dequeus the current request properly.*/
+                sr_arpreq_destroy(&sr->cache, requests);
+            }
+	    else
+	    {
+	        /*Send the request*/
+                requests->times_sent += 1;
+                requests->sent = now;
+	    }
+        }
+        requests = requests->next;
+  
+    }
 }
 
 /* You should not need to touch the rest of this code. */
