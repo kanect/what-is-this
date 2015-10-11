@@ -91,7 +91,9 @@ void sr_handlepacket(struct sr_instance* sr,
   
  
  
-    /* Ethernet */
+  /* Ethernet */
+
+  /*TODO: checksum*/
   int minlength = sizeof(sr_ethernet_hdr_t);
   if (len < minlength) {
     fprintf(stderr, "Failed to print ETHERNET header, insufficient length\n");
@@ -103,7 +105,10 @@ void sr_handlepacket(struct sr_instance* sr,
   if(ethtype == ethertype_ip)/*IP packet*/
   {
     fprintf(stderr, "YOU GOT A IP PACKET\n");
-    print_hdrs(packet, len);
+    /*print_hdrs(packet, len);*/
+    sr_handle_ip(sr, packet, packet + sizeof(sr_ethernet_hdr_t), interface);
+
+    
   }
   else if (ethtype == ethertype_arp) /*ARP packet*/
   {
@@ -130,7 +135,21 @@ void make_arp_header(uint8_t* buffer, unsigned short op)
     arp_header->ar_hln = ETHER_ADDR_LEN;
     arp_header->ar_pln = IP_ADDR_LEN;
     arp_header->ar_op = htons(op);
+    return;
 }
+
+/*Makes a ethernet header 
+*Requires target and source machines address and ethertype, and a allocated space for it.
+*/
+void make_ehternet_header(uint8_t* buffer, uint8_t* source, uint8_t* target, uint16_t type)
+{
+    sr_ethernet_hdr_t *ether_hdr = (sr_ethernet_hdr_t*) buffer;
+    memcpy(ether_hdr->ether_dhost, target, sizeof(uint8_t) * ETHER_ADDR_LEN);
+    memcpy(ether_hdr->ether_shost, source, sizeof(uint8_t) * ETHER_ADDR_LEN);
+    ether_hdr->ether_type = type;
+    return;
+}
+
 
 /*Handles recived ARP packet*/
 void sr_handle_arp(struct sr_instance* sr,
@@ -190,8 +209,8 @@ void sr_handle_arp(struct sr_instance* sr,
 
             /*Sends packet*/
             sr_send_packet(sr, buffer, length, interface);
-            print_hdrs(buffer, length);
-            free(buffer);
+            /*print_hdrs(buffer, length);*/
+            free(buffer);       
         }
     }
     else if (arp_op== arp_op_reply)
@@ -205,5 +224,50 @@ void sr_handle_arp(struct sr_instance* sr,
     return;
 }
 
+/*Handles IP packet*/
+void sr_handle_ip(struct sr_instance* sr,
+        uint8_t *ethernet_hdr_bits,
+        uint8_t *ip_hdr_bits,
+        char* interface/* lent */)
+{
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) ip_hdr_bits;
+    sr_ethernet_hdr_t* ether_hdr = (sr_ethernet_hdr_t*) ethernet_hdr_bits;
+    /*TODO: checksum*/
+    /*Before we do stuff, we need to know is the packet for us*/
+    if (sr_get_interface_with_ip(sr, ip_hdr->ip_dst) != 0)
+    {
+        /*This packet is for us*/
+        uint8_t ip_p = ip_protocol(ip_hdr_bits);
+        if (ip_p == ip_protocol_icmp)
+        {
+            /*This is a icmp packet*/
+            fprintf(stderr, "IMCP packet to us received\n");
+            sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)ip_hdr_bits + sizeof(sr_ip_hdr_t);
+            /*TODO: checksum*/            
+            if(icmp_echo_request == ntohs(icmp_hdr->icmp_type))
+            {
+                /*This is a echo request*/
+                
+                /*Makes a reply*/
+                uint8_t* buffer = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
+                make_ethernet_header(buffer, ether_hdr->dhost, ether_hdr->shost, ethertype_ip);
+
+                /*Make IP header*/
+
+                
+                /*Make ICMP header*/
+
+                
+            }
+            
+        }
+    }
+    else
+    {
+        /*This packet is not for us, forward it.*/
+        fprintf(stderr, "IP packet not for us recieved.\n");
+    }
 
 
+    return;
+}
