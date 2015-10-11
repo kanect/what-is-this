@@ -102,7 +102,8 @@ void sr_handlepacket(struct sr_instance* sr,
   
   if(ethtype == ethertype_ip)/*IP packet*/
   {
-    
+    fprintf(stderr, "YOU GOT A IP PACKET\n");
+    print_hdrs(packet, len);
   }
   else if (ethtype == ethertype_arp) /*ARP packet*/
   {
@@ -114,8 +115,24 @@ void sr_handlepacket(struct sr_instance* sr,
   
 }/* end sr_ForwardPacket */
 
-/*Handles recived ARP packet*/
 
+/*Make a standard arp header
+*With information:
+*Hardware type, protocol type, hardware/protocol address length
+*
+*And the given arguement opcode.
+*/
+void make_arp_header(uint8_t* buffer, unsigned short op)
+{
+    sr_arp_hdr_t *arp_header = (sr_arp_hdr_t*) buffer;
+    arp_header->ar_hrd = htons(arp_hrd_ethernet);
+    arp_header->ar_pro = htons(ethertype_ip);
+    arp_header->ar_hln = ETHER_ADDR_LEN;
+    arp_header->ar_pln = IP_ADDR_LEN;
+    arp_header->ar_op = htons(op);
+}
+
+/*Handles recived ARP packet*/
 void sr_handle_arp(struct sr_instance* sr,
         uint8_t *ethernet_hdr_bits,
         uint8_t *arp_hdr_bits,
@@ -148,7 +165,7 @@ void sr_handle_arp(struct sr_instance* sr,
             sr_ethernet_hdr_t *new_ether_header = (sr_ethernet_hdr_t*) buffer;
             
             memcpy(new_ether_header->ether_dhost, ethernet_header->ether_shost, sizeof(uint8_t) * ETHER_ADDR_LEN); 
-            memcpy(new_ether_header->ether_shost, ethernet_header->ether_dhost, sizeof(uint8_t) * ETHER_ADDR_LEN); 
+            memcpy(new_ether_header->ether_shost, target_interface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN); 
             
             /*Copies over ether type */
             /*memcpy(new_ether_header->ether_type, ethernet_header->ether_type, sizeof(uint16_t));    */
@@ -159,11 +176,22 @@ void sr_handle_arp(struct sr_instance* sr,
             /*Makes arp header start*/
             sr_arp_hdr_t *new_arp_header = (sr_arp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
             make_arp_header(buffer + sizeof(sr_ethernet_hdr_t), arp_op_reply);
-            print_hdr_arp(new_arp_header);
-            /*Makes arp header end*/
+            
 
+            /*Flips source and target IP and hardware address*/
+            
+            memcpy(new_arp_header->ar_sha, target_interface->addr, sizeof(unsigned char) * ETHER_ADDR_LEN);
+            memcpy(new_arp_header->ar_tha, arp_header->ar_sha, sizeof(unsigned char) * ETHER_ADDR_LEN);
+            new_arp_header->ar_tip = arp_header->ar_sip;
+            new_arp_header->ar_sip = arp_header->ar_tip;
+            /*Makes arp header end*/
             
             /*Makes reply end*/
+
+            /*Sends packet*/
+            sr_send_packet(sr, buffer, length, interface);
+            print_hdrs(buffer, length);
+            free(buffer);
         }
     }
     else if (arp_op== arp_op_reply)
@@ -177,19 +205,5 @@ void sr_handle_arp(struct sr_instance* sr,
     return;
 }
 
-/*Make a standard arp header
-*With information:
-*Hardware type, protocol type, hardware/protocol address length
-*
-*And the given arguement opcode.
-*/
-void make_arp_header(uint8_t* buffer, unsigned short op)
-{
-    sr_arp_hdr_t *arp_header = (sr_arp_hdr_t*) buffer;
-    arp_header->ar_hrd = htons(arp_hrd_ethernet);
-    arp_header->ar_pro = htons(ethertype_ip);
-    arp_header->ar_hln = ETHER_ADDR_LEN;
-    arp_header->ar_pln = IP_ADDR_LEN;
-    arp_header->ar_op = htons(op);
-}
+
 
