@@ -148,7 +148,7 @@ struct sr_ethernet_hdr
 } __attribute__ ((packed)) ;
 typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 
-
+#define IP_ADDR_LEN 4
 
 enum sr_ip_protocol {
   ip_protocol_icmp = 0x0001,
@@ -168,6 +168,7 @@ enum sr_arp_opcode {
 enum sr_arp_hrd_fmt {
   arp_hrd_ethernet = 0x0001,
 };
+
 
 
 struct sr_arp_hdr

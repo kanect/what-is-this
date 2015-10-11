@@ -89,11 +89,7 @@ void sr_handlepacket(struct sr_instance* sr,
 	memcpy(header, packet, sizeof(sr_ethernet_hdr_t));	
   }
   
-  
-  /*printf("Dest:%u %u %u %u %u %u", header->ether_dhost[0], header->ether_dhost[1], header->ether_dhost[2], header->ether_dhost[3], header->ether_dhost[4], header->ether_dhost[5]);*/
-  
  
-
  
     /* Ethernet */
   int minlength = sizeof(sr_ethernet_hdr_t);
@@ -111,7 +107,7 @@ void sr_handlepacket(struct sr_instance* sr,
   else if (ethtype == ethertype_arp) /*ARP packet*/
   {
     fprintf(stderr, "ARP packet recieved\n");
-    sr_handle_arp(sr, packet + sizeof(sr_ethernet_hdr_t), interface);
+    sr_handle_arp(sr, packet, packet + sizeof(sr_ethernet_hdr_t), interface);
   }
 
   		
@@ -121,16 +117,54 @@ void sr_handlepacket(struct sr_instance* sr,
 /*Handles recived ARP packet*/
 
 void sr_handle_arp(struct sr_instance* sr,
+        uint8_t *ethernet_hdr_bits,
         uint8_t *arp_hdr_bits,
         char* interface/* lent */)
 {
     sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *)arp_hdr_bits;
+    sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)ethernet_hdr_bits;
     unsigned short arp_op = ntohs(arp_header->ar_op);
     if (arp_op == arp_op_request)
     {
         fprintf(stderr, "ARP request recieved.\n");
+        
+        /*Check if this targets IP is the routers address, if not drop the packet e.g. do nothing*/
+        /*print_addr_ip_int(ntohl(arp_header->ar_tip));*/
+        struct sr_if *target_interface = (struct sr_if*)sr_get_interface_with_ip(sr, arp_header->ar_tip);
+        if(target_interface != 0){
+            /*This arp packet is for us*/
+            int length = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+            uint8_t *buffer = malloc(length);
+            if(buffer == NULL)
+            {
+                /*Malloc failed*/
+                fprintf(stderr, "Malloc for making arp packet failed.\n");
+            }
+            
+            /*Makes reply start*/
 
-        /*Check if this targets IP is the routers address, if not drop the packet*/
+            /*Makes ether header start*/
+            /*Flips the ethernet address fields*/
+            sr_ethernet_hdr_t *new_ether_header = (sr_ethernet_hdr_t*) buffer;
+            
+            memcpy(new_ether_header->ether_dhost, ethernet_header->ether_shost, sizeof(uint8_t) * ETHER_ADDR_LEN); 
+            memcpy(new_ether_header->ether_shost, ethernet_header->ether_dhost, sizeof(uint8_t) * ETHER_ADDR_LEN); 
+            
+            /*Copies over ether type */
+            /*memcpy(new_ether_header->ether_type, ethernet_header->ether_type, sizeof(uint16_t));    */
+            new_ether_header->ether_type = ethernet_header->ether_type;
+            /*Makes ether header end*/
+
+
+            /*Makes arp header start*/
+            sr_arp_hdr_t *new_arp_header = (sr_arp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
+            make_arp_header(buffer + sizeof(sr_ethernet_hdr_t), arp_op_reply);
+            print_hdr_arp(new_arp_header);
+            /*Makes arp header end*/
+
+            
+            /*Makes reply end*/
+        }
     }
     else if (arp_op== arp_op_reply)
     {
@@ -141,5 +175,21 @@ void sr_handle_arp(struct sr_instance* sr,
         fprintf(stderr, "Unsupported ARP op.\n");
     }
     return;
+}
+
+/*Make a standard arp header
+*With information:
+*Hardware type, protocol type, hardware/protocol address length
+*
+*And the given arguement opcode.
+*/
+void make_arp_header(uint8_t* buffer, unsigned short op)
+{
+    sr_arp_hdr_t *arp_header = (sr_arp_hdr_t*) buffer;
+    arp_header->ar_hrd = htons(arp_hrd_ethernet);
+    arp_header->ar_pro = htons(ethertype_ip);
+    arp_header->ar_hln = ETHER_ADDR_LEN;
+    arp_header->ar_pln = IP_ADDR_LEN;
+    arp_header->ar_op = htons(op);
 }
 
