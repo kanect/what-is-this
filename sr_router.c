@@ -113,7 +113,7 @@ void sr_handlepacket(struct sr_instance* sr,
   {
     fprintf(stderr, "YOU GOT A IP PACKET\n");
     /*print_hdrs(packet, len);*/
-    sr_handle_ip(sr, packet, packet + sizeof(sr_ethernet_hdr_t), interface);
+    sr_handle_ip(sr, packet, packet + sizeof(sr_ethernet_hdr_t), len, interface);
 
     
   }
@@ -223,6 +223,7 @@ void sr_handle_arp(struct sr_instance* sr,
     else if (arp_op== arp_op_reply)
     {
         fprintf(stderr, "ARP response recieved.\n");
+        print_hdrs(ethernet_hdr_bits, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
     }
     else
     {
@@ -235,6 +236,7 @@ void sr_handle_arp(struct sr_instance* sr,
 void sr_handle_ip(struct sr_instance* sr,
         uint8_t *ethernet_hdr_bits,
         uint8_t *ip_hdr_bits,
+        unsigned int len,
         char* interface/* lent */)
 {
     sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) ip_hdr_bits;
@@ -287,7 +289,32 @@ void sr_handle_ip(struct sr_instance* sr,
         {
             /*Check arp cache*/
             fprintf(stderr, "Matching entry found\n");
-            sr_print_routing_entry(target);
+            sr_print_routing_entry(target);/*TODO: remove*/
+            
+            /*Check ARP cache*/
+            /*According to comments for sr_arpcache_lookup we need to free the struct returned from it, if not null*/
+            struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, target->gw.s_addr);
+            if (entry == NULL)
+            {
+                /*Make arp request to gateway*/
+                struct sr_arpreq *arp_request = sr_arpcache_queuereq(&sr->cache, target->gw.s_addr, ethernet_hdr_bits, len, interface);
+                if(arp_request == NULL)
+                {
+                    /*Something is terribly wrong, sr_arpcache_queuereq failed to behave as defined.*/
+                    fprintf(stderr, "sr_arpcache_queuereq failed\n");
+                    return;
+                    
+                }
+                /*J.W.: I beilive there is nothing to be done at this moment in handle ip after the arp_request has be cached*/
+                /*TODO: remove*/
+                
+            }
+            else
+            {
+                /*Forward Packet*/
+                
+                free(entry);
+            }
         }
     }
 
