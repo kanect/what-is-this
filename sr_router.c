@@ -25,6 +25,13 @@
 
 #include <stdlib.h>
 #include <string.h>
+
+
+
+/* Forward delcaration*/
+void sr_handle_ip();
+int longest_prefix_len();
+struct sr_rt* sr_lpm();
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -141,7 +148,7 @@ void make_arp_header(uint8_t* buffer, unsigned short op)
 /*Makes a ethernet header 
 *Requires target and source machines address and ethertype, and a allocated space for it.
 */
-void make_ehternet_header(uint8_t* buffer, uint8_t* source, uint8_t* target, uint16_t type)
+void make_ethernet_header(uint8_t* buffer, uint8_t* source, uint8_t* target, uint16_t type)
 {
     sr_ethernet_hdr_t *ether_hdr = (sr_ethernet_hdr_t*) buffer;
     memcpy(ether_hdr->ether_dhost, target, sizeof(uint8_t) * ETHER_ADDR_LEN);
@@ -237,6 +244,7 @@ void sr_handle_ip(struct sr_instance* sr,
     if (sr_get_interface_with_ip(sr, ip_hdr->ip_dst) != 0)
     {
         /*This packet is for us*/
+        fprintf(stderr, "IP packet for us recieved.\n");
         uint8_t ip_p = ip_protocol(ip_hdr_bits);
         if (ip_p == ip_protocol_icmp)
         {
@@ -250,10 +258,10 @@ void sr_handle_ip(struct sr_instance* sr,
                 
                 /*Makes a reply*/
                 uint8_t* buffer = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
-                make_ethernet_header(buffer, ether_hdr->dhost, ether_hdr->shost, ethertype_ip);
+                make_ethernet_header(buffer, ether_hdr->ether_dhost, ether_hdr->ether_shost, ethertype_ip);
 
                 /*Make IP header*/
-
+                
                 
                 /*Make ICMP header*/
 
@@ -266,8 +274,82 @@ void sr_handle_ip(struct sr_instance* sr,
     {
         /*This packet is not for us, forward it.*/
         fprintf(stderr, "IP packet not for us recieved.\n");
+        /*Check routing table*/
+        struct sr_rt* target = sr_lpm(sr->routing_table, ip_hdr->ip_dst);
+        if(target == NULL)
+        {
+            /*NO MATCH*/
+            fprintf(stderr, "No match in routing table\n");
+            
+            /*Make ICMP net unreachable packet*/
+        }
+        else
+        {
+            /*Check arp cache*/
+            fprintf(stderr, "Matching entry found\n");
+            sr_print_routing_entry(target);
+        }
     }
 
 
     return;
+}
+
+/*Routing table lookup
+* variables 
+*    rt: pointer to routing table
+*    dest: pointer the the address we are trying to find the longest prefix match for.
+*/
+struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip)
+{
+    /*Naive implmentation*/
+    
+    /*Current longest matching number of bytes*/
+    int max_num_match = 0;
+    
+    /*Record holder routing entry*/
+    struct sr_rt *max_routing_entry = NULL;
+    
+    
+    /*TODO: figure out what is mask for*/
+    
+    
+    int temp_num = longest_prefix_len(rt->dest.s_addr, dest_ip);
+    if (temp_num > max_num_match)
+    {
+        max_num_match = temp_num;
+        max_routing_entry = rt;
+    }
+    while(rt->next)
+    {
+        rt = rt->next; 
+        temp_num = longest_prefix_len(rt->dest.s_addr, dest_ip);
+        if (temp_num > max_num_match)
+        {
+            max_num_match = temp_num;
+            max_routing_entry = rt;
+        }
+    }
+    
+    return max_routing_entry;
+}
+
+/* Longest prefix match
+* Compares the two in_addr, and return the maximum number of bytes of matching prefixes.
+* NOTE: parameters needs to be in host order.
+*Returns the number the maximum number of bytes of matching prefixes.
+*/
+int longest_prefix_len(uint32_t addr1, uint32_t addr2)
+{
+    
+    int max_byte_match = 0;
+    
+    /*Using xor bit wise operator, so that if addr1[x] and addr2[x] have different bits,
+      *xor_product[x] will be one, otherwise, if addr1[x] == addr2[x], xor_product[x] will be 0.
+      */
+    uint32_t xor_product = addr1 ^ addr2;
+    
+    /*count the leading zeroes*/
+    max_byte_match = __builtin_clz(xor_product);
+    return max_byte_match;
 }

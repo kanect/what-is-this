@@ -170,7 +170,9 @@ enum sr_arp_hrd_fmt {
 };
 
 
-
+enum sr_icmp_type {
+    icmp_echo_request = 0x0008,
+};
 struct sr_arp_hdr
 {
     unsigned short  ar_hrd;             /* format of hardware address   */

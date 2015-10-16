@@ -192,3 +192,29 @@ void sr_print_if(struct sr_if* iface)
     Debug("\n");
     Debug("\tinet addr %s\n",inet_ntoa(ip_addr));
 } /* -- sr_print_if -- */
+
+
+/*method : sr_get_interface_with_ip(..)*
+ *Returns the interface pointer if there is a interface with the given ip, return 0 if it doesn't exist.
+ */
+
+struct sr_if* sr_get_interface_with_ip(struct sr_instance* sr, uint32_t ip)
+{
+    struct sr_if* if_walker = 0;
+
+    /* -- REQUIRES -- */
+    assert(ip);
+    assert(sr);
+
+    if_walker = sr->if_list;
+
+    while(if_walker)
+    {
+       if(if_walker->ip == ip)
+        { return if_walker; }
+        if_walker = if_walker->next;
+    }
+
+    return 0;
+} /* -- sr_get_interface_with_ip -- */
+
