@@ -23,83 +23,92 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
 
     
     /* Fill this in */
-    time_t now = time(0); /*Get current time*/
+    
     		
     struct sr_arpcache cache = sr->cache;
     struct sr_arpreq *requests;
+    struct sr_arpreq *old_request;
     requests = cache.requests;
     while (requests != NULL)
     {
-        /*TODO: refractor this into handle_arpreq*/
-        if (difftime(now, requests->sent) > 1.0)
-        {
-            if (requests->times_sent >= 5) /*Sent too many times*/
-            {
-            /*Make a icmp packet for host unreachable*/
-
-		        /*Not sure if sr_arpreq_destroy(requests) dequeus the current request properly.*/
-                sr_arpreq_destroy(&sr->cache, requests);
-            }
-            else
-            {
-                /*Send the arp request packet */
-                uint8_t *buffer = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
-                if (buffer == NULL)
-                {
-                    fprintf(stderr, "Malloc for ARP request packet failed\n");
-                }
-                else
-                {
-                    /*Lookup in routing table for the interface to send the arp request from*/
-                    struct sr_rt* target = (struct sr_rt*)sr_lpm(sr->routing_table, requests->ip);
-                    char *if_name_pointer = target->interface;
-                    struct sr_if* interface = sr_get_interface(sr, if_name_pointer);
-                    
-                    /*TODO:figure out something better*/
-                    uint8_t boardcast_addr[ETHER_ADDR_LEN] = "000000";
-                    boardcast_addr[0] = 0xff;
-                    boardcast_addr[1] = 0xff;
-                    boardcast_addr[2] = 0xff;
-                    boardcast_addr[3] = 0xff;
-                    boardcast_addr[4] = 0xff;
-                    boardcast_addr[5] = 0xff;
-                    if(target != NULL)
-                    {
-                        make_ethernet_header(buffer, interface->addr, boardcast_addr, htons(ethertype_arp));
-                        
-                        sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
-                        make_arp_header((uint8_t*) arp_header,arp_op_request);
-                        
-                        memcpy(arp_header->ar_sha, interface->addr, sizeof(unsigned char) * ETHER_ADDR_LEN);
-                        memcpy(arp_header->ar_tha, boardcast_addr, sizeof(unsigned char) * ETHER_ADDR_LEN);
-                        arp_header->ar_tip = requests->ip; /*Give the arp request ip*/
-                        arp_header->ar_sip = interface->ip;
-                        
-                        int retval = sr_send_packet(sr, buffer, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), if_name_pointer);
-                        if(retval == -1)
-                        {
-                            fprintf(stderr,"sr_send_packet returned error\n");
-                        }
-                        else
-                        {
-                            fprintf(stderr, "Packet sent\n");
-                        }
-                        
-                        /*Make adjustments to the corrisponding struct sr_arpreq */
-                        requests->times_sent += 1;
-                        requests->sent = now;
-                    }
-                    
-                }        
-            
-            
-            }
-        }
+        /*According to sr_arpcache.h, we need to store the pointer before handle_arpreq might destroy it)*/
+        old_request = requests;
         requests = requests->next;
+        
+        handle_arpreq(sr, old_request);
+        
   
     }
 }
 
+void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *requests)
+{
+    time_t now = time(0); /*Get current time*/
+    if (difftime(now, requests->sent) > 1.0)
+    {
+        if (requests->times_sent >= 5) /*Sent too many times*/
+        {
+        /*Make a icmp packet for host unreachable*/
+
+        /*Not sure if sr_arpreq_destroy(requests) dequeus the current request properly.*/
+            sr_arpreq_destroy(&sr->cache, requests);
+        }
+        else
+        {
+            /*Send the arp request packet */
+            uint8_t *buffer = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+            if (buffer == NULL)
+            {
+                fprintf(stderr, "Malloc for ARP request packet failed\n");
+            }
+            else
+            {
+            /*Lookup in routing table for the interface to send the arp request from*/
+                struct sr_rt* target = (struct sr_rt*)sr_lpm(sr->routing_table, requests->ip);
+                char *if_name_pointer = target->interface;
+                struct sr_if* interface = sr_get_interface(sr, if_name_pointer);
+                    
+                /*TODO:figure out something better*/
+                uint8_t boardcast_addr[ETHER_ADDR_LEN] = "000000";
+                boardcast_addr[0] = 0xff;
+                boardcast_addr[1] = 0xff;
+                boardcast_addr[2] = 0xff;
+                boardcast_addr[3] = 0xff;
+                boardcast_addr[4] = 0xff;
+                boardcast_addr[5] = 0xff;
+                if(target != NULL)
+                {
+                    make_ethernet_header(buffer, interface->addr, boardcast_addr, htons(ethertype_arp));
+                    
+                    sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
+                    make_arp_header((uint8_t*) arp_header,arp_op_request);
+                        
+                    memcpy(arp_header->ar_sha, interface->addr, sizeof(unsigned char) * ETHER_ADDR_LEN);
+                    memcpy(arp_header->ar_tha, boardcast_addr, sizeof(unsigned char) * ETHER_ADDR_LEN);
+                    arp_header->ar_tip = requests->ip; /*Give the arp request ip*/
+                    arp_header->ar_sip = interface->ip;
+                        
+                    int retval = sr_send_packet(sr, buffer, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), if_name_pointer);
+                    if(retval == -1)
+                    {
+                        fprintf(stderr,"sr_send_packet returned error\n");
+                    }
+                    else
+                    {
+                        fprintf(stderr, "ARP request Packet sent\n");
+                    }
+                        
+                    /*Make adjustments to the corrisponding struct sr_arpreq */
+                    requests->times_sent += 1;
+                    requests->sent = now;
+                }
+                    
+            }        
+            
+            
+        }
+    }
+}
 /* You should not need to touch the rest of this code. */
 
 /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order.

@@ -76,6 +76,7 @@
 
 
 /*Forward delcarations*/
+void handle_arpreq();
 
 struct sr_packet {
     uint8_t *buf;               /* A raw Ethernet frame, presumably with the dest MAC empty */
@@ -108,6 +109,10 @@ struct sr_arpcache {
     pthread_mutex_t lock;
     pthread_mutexattr_t attr;
 };
+
+/*Handles a specific arp reqeust given in paramters*/
+void handle_arpreq(struct sr_instance*, struct sr_arpreq*);
+
 
 /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
    You must free the returned structure if it is not NULL. */
