@@ -325,7 +325,7 @@ void sr_handle_ip(struct sr_instance* sr,
 /*Routing table lookup
 * variables 
 *    rt: pointer to routing table
-*    dest: pointer the the address we are trying to find the longest prefix match for.
+*    dest: pointer the the address we are trying to find the longest prefix match form, in NETWORK ORDER.
 */
 struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip)
 {
@@ -337,26 +337,18 @@ struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip)
     /*Record holder routing entry*/
     struct sr_rt *max_routing_entry = NULL;
     
-    
-    /*TODO: figure out what is mask for*/
-    
-    
-    int temp_num = longest_prefix_len(rt->dest.s_addr, dest_ip);
-    if (temp_num > max_num_match)
-    {
-        max_num_match = temp_num;
-        max_routing_entry = rt;
-    }
-    while(rt->next)
+    /*Since the rotuing able stores the ip in network order, we need to convert to host order before we do longest prefix match.*/
+    int temp_num = 0;
+    do
     {
         rt = rt->next; 
-        temp_num = longest_prefix_len(rt->dest.s_addr, dest_ip);
+        temp_num = longest_prefix_len(ntohl(rt->dest.s_addr) & rt->mask.s_addr, ntohl(dest_ip));
         if (temp_num > max_num_match)
         {
             max_num_match = temp_num;
             max_routing_entry = rt;
         }
-    }
+    }while(rt->next);
     
     return max_routing_entry;
 }
