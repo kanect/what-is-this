@@ -157,6 +157,45 @@ void make_ethernet_header(uint8_t* buffer, uint8_t* source, uint8_t* target, uin
     return;
 }
 
+void make_icmp_header(uint8_t* buffer, uint8_t type, uint8_t code, uint8_t data[ICMP_DATA_SIZE])
+{
+    if (type == 0)
+    {
+	/*Create echo reply*/
+	sr_icmp_t0_hdr_t *icmp_hdr = (sr_icmp_t0_hdr_t*) buffer;
+	icmp_hdr->icmp_type = type;
+	icmp_hdr->icmp_code = code;
+        icmp_hdr->icmp_id = 0;
+	icmp_hdr->icmp_seq_num = 0;
+	/*Set checksum to 0, recalculate and reset.*/
+	icmp_hdr->icmp_sum = 0;
+	icmp_hdr->icmp_sum = cksum(icmp_hdr,sizeof(uint8_t) * ICMP_DATA_SIZE);
+    }
+    if (type == 3)
+    {
+	sr_icmp_t3_hdr_t *icmp_hdr = (sr_icmp_t3_hdr_t*) buffer;
+	icmp_hdr->icmp_type = type;
+	icmp_hdr->icmp_code = code;
+	icmp_hdr->icmp_unused = 0;
+	icmp_hdr->icmp_mtu = 0;
+	memcpy(icmp_hdr->icmp_data,data,sizeof(uint8_t) * ICMP_DATA_SIZE);
+	/*Set checksum to 0, recalculate and reset.*/
+	icmp_hdr->icmp_sum = 0;
+	icmp_hdr->icmp_sum = cksum(icmp_hdr,36);
+    }
+    if (type == 11)
+    {
+	sr_icmp_t11_hdr_t *icmp_hdr = (sr_icmp_t11_hdr_t*) buffer;
+	icmp_hdr->icmp_type = type;
+	icmp_hdr->icmp_code = code;
+	icmp_hdr->icmp_unused = 0;
+	memcpy(icmp_hdr->icmp_data,data,sizeof(uint8_t) * ICMP_DATA_SIZE);
+
+	/*Set checksum to 0, recalculate and reset.*/
+	icmp_hdr->icmp_sum = 0;
+	icmp_hdr->icmp_sum = cksum(icmp_hdr,36);
+    }
+}
 
 /*Handles recived ARP packet*/
 void sr_handle_arp(struct sr_instance* sr,
@@ -321,6 +360,8 @@ void sr_handle_ip(struct sr_instance* sr,
 
     return;
 }
+
+
 
 /*Routing table lookup
 * variables 
