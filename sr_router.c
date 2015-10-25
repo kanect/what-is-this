@@ -348,8 +348,8 @@ void sr_handle_ip(struct sr_instance* sr,
         }
         else if(ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp)
         {
-            /*Make and Send ICMP type 3 response*/
-            sr_send_type3_response(sr, ethernet_hdr_bits, len, interface);
+            /*Make and Send ICMP type 3 code 3 response*/
+            sr_send_type3_response(sr, ethernet_hdr_bits, len, interface, 3);
         }
         else
         {
@@ -367,7 +367,9 @@ void sr_handle_ip(struct sr_instance* sr,
             /*NO MATCH*/
             fprintf(stderr, "No match in routing table\n");
             
-            /*Make ICMP net unreachable packet*/
+            /*Make ICMP net unreachable packet*/ 
+            /*ICMP type 3 Code 0*/
+            sr_send_type3_response(sr, ethernet_hdr_bits, len, interface, 0);
         }
         else
         {
@@ -408,8 +410,15 @@ void sr_handle_ip(struct sr_instance* sr,
 
 /*Takes the original incoming packet, and it's length, make and send an
 * ICMP type 3 destination unreachable packet.
+*
+*Parameters:
+*sr_instance *sr: the router
+*uint8_t *buffer: Pointer to the incoming packet
+*uint8_t len: Incoming packet's length
+*char* interface: Incoming packet's interface name
+*uint8_t code: Error code for type 3.
 */
-void sr_send_type3_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface)
+void sr_send_type3_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface, uint8_t code)
 {
     /*Pointers for incoming packet*/
     sr_ethernet_hdr_t* ether_hdr = (sr_ethernet_hdr_t*)buffer;
@@ -420,19 +429,22 @@ void sr_send_type3_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len
     /*Pointer to repsonse packet*/
     uint8_t* response_buffer = malloc(reply_packet_len);
             
-            
+    
+    struct sr_if* iface_pointer = sr_get_interface(sr, interface);
     make_ethernet_header(response_buffer, ether_hdr->ether_dhost, ether_hdr->ether_shost, htons(ethertype_ip));
     sr_make_ip_header(response_buffer + sizeof(sr_ethernet_hdr_t),
         0x0000, sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t),
-        ip_protocol_icmp, ip_hdr->ip_dst, ip_hdr->ip_src);
+        ip_protocol_icmp, iface_pointer->ip, ip_hdr->ip_src);
                                 
    /*Type 3 Code 3 Port unreachable header*/ 
     uint8_t* carry_on_data = malloc(sizeof(sr_ip_hdr_t)+ 8); 
     memcpy(carry_on_data, ip_hdr, sizeof(sr_ip_hdr_t) + 8);/*Original ip data + 8 byte of icmp*/
-    make_icmp_header(response_buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), 3, 3, carry_on_data);
+    make_icmp_header(response_buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), 3, code, carry_on_data);
                                 
             
     sr_send_packet(sr, response_buffer, reply_packet_len, interface);
+    
+    print_hdrs(response_buffer, reply_packet_len);
     free(response_buffer);
     free(carry_on_data);    
 }

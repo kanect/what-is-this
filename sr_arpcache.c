@@ -48,9 +48,16 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *requests)
     {
         if (requests->times_sent >= 5) /*Sent too many times*/
         {
-        /*Make a icmp packet for host unreachable*/
-
-        /*Not sure if sr_arpreq_destroy(requests) dequeus the current request properly.*/
+            /*Goes through every packet queued for this request*/
+            struct sr_packet *packet_walker = requests->packets;
+            while (packet_walker != NULL)
+            {
+                /*Make a icmp packet for host unreachable*/
+                /*Type 3 code 1*/
+                sr_send_type3_response(sr, packet_walker->buf, packet_walker->len, packet_walker->iface, 1);
+                packet_walker = packet_walker->next;
+            }
+          
             sr_arpreq_destroy(&sr->cache, requests);
         }
         else
