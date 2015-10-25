@@ -334,28 +334,44 @@ void sr_handle_ip(struct sr_instance* sr,
                 new_ip_header->ip_sum = 0;
                 new_ip_header->ip_sum = cksum( buffer + sizeof(sr_ethernet_hdr_t), new_ip_header->ip_hl * 4);
 	
+                            /*Make ICMP header*/
                 sr_icmp_hdr_t* new_icmp_header = (sr_icmp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
                 new_icmp_header->icmp_type = 0x0000;
                 new_icmp_header->icmp_sum = 0;
                 new_icmp_header->icmp_sum = cksum( (void*)new_icmp_header, 8);
-                        /*Make ICMP header*/
+
 
                 sr_send_packet(sr, buffer, len, interface);
                 free(buffer);
             }
             
         }
-        else if(ip_protocol_udp || ip_protocol_tcp)
+        else if(ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp)
         {
             /*Make type 3 icmp port unreachable reply.*/
-            uint8_t* buffer = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
+            int reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+            uint8_t* buffer = malloc(reply_packet_len);
             
+            
+            make_ethernet_header(buffer, ether_hdr->ether_dhost, ether_hdr->ether_shost, htons(ethertype_ip));
             sr_make_ip_header(buffer + sizeof(sr_ethernet_hdr_t),
                                 0x0000, sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t),
                                 ip_protocol_icmp, ip_hdr->ip_dst, ip_hdr->ip_src);
                                 
-            print_hdr_ip(buffer + sizeof(sr_ethernet_hdr_t));
+            /*Type 3 Code 3 Port unreachable*/ 
+            uint8_t* carry_on_data = malloc(sizeof(sr_ip_hdr_t)+ 8); 
+            memcpy(carry_on_data, ip_hdr, sizeof(sr_ip_hdr_t) + 8);/*Original ip data + 8 byte of icmp*/
+            make_icmp_header(buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), 3, 3, carry_on_data);
+                                
+            print_hdrs(buffer, reply_packet_len);
             
+            sr_send_packet(sr, buffer, reply_packet_len, interface);
+            free(buffer);
+            free(carry_on_data);
+        }
+        else
+        {
+            fprintf(stderr, "Unsupported IP type\n");
         }
     }
     else
