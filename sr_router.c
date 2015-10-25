@@ -297,29 +297,30 @@ void sr_handle_ip(struct sr_instance* sr,
             {
                 /*This is a echo request*/
                 /*Makes a reply*/
-                uint8_t* buffer = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
+                uint8_t* buffer = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + (sizeof(sr_icmp_hdr_t) * 2));
                 make_ethernet_header(buffer, ether_hdr->ether_dhost, ether_hdr->ether_shost, htons( ethertype_ip));
 	
-	memcpy(buffer + sizeof(sr_ethernet_hdr_t), ip_hdr_bits, sizeof(sr_ip_hdr_t) + (2 *sizeof(sr_icmp_hdr_t)));
+                memcpy(buffer + sizeof(sr_ethernet_hdr_t), ip_hdr_bits, sizeof(sr_ip_hdr_t) + (2 *sizeof(sr_icmp_hdr_t)));
 		
-		sr_ip_hdr_t* new_ip_header = (sr_ip_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
-		sr_ip_hdr_t* old_ip_header = (sr_ip_hdr_t*) ip_hdr_bits;
+                sr_ip_hdr_t* new_ip_header = (sr_ip_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
+                sr_ip_hdr_t* old_ip_header = (sr_ip_hdr_t*) ip_hdr_bits;
                 new_ip_header->ip_src = old_ip_header->ip_dst;
-		new_ip_header->ip_dst = old_ip_header->ip_src;        
+                new_ip_header->ip_dst = old_ip_header->ip_src;        
                 new_ip_header->ip_id = old_ip_header->ip_id;
-		new_ip_header->ip_sum = 0;
-		new_ip_header->ip_sum = cksum( buffer + sizeof(sr_ethernet_hdr_t), new_ip_header->ip_hl * 4);
+                new_ip_header->ip_sum = 0;
+                new_ip_header->ip_sum = cksum( buffer + sizeof(sr_ethernet_hdr_t), new_ip_header->ip_hl * 4);
 	
-		sr_icmp_hdr_t* new_icmp_header = (sr_icmp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+                sr_icmp_hdr_t* new_icmp_header = (sr_icmp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
                 new_icmp_header->icmp_type = 0x0000;/*Reply type*/
-		new_icmp_header->icmp_sum = 0;
-		new_icmp_header->icmp_sum = cksum( (void*)new_icmp_header, 8);
-                /*Make ICMP header*/
+                new_icmp_header->icmp_sum = 0;
+                new_icmp_header->icmp_sum = cksum( (void*)new_icmp_header, 8);
+                        /*Make ICMP header*/
 
                 print_hdrs(buffer, sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
-		sr_send_packet(sr, buffer, len, interface);
-        	fprintf(stderr, "Packet away size: %u \n", sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
-	    }
+                sr_send_packet(sr, buffer, len, interface);
+                fprintf(stderr, "Packet away size: %u \n", sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
+                free(buffer);
+            }
             
         }
     }
