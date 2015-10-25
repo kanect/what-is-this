@@ -172,6 +172,8 @@ typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 
 enum sr_ip_protocol {
   ip_protocol_icmp = 0x0001,
+  ip_protocol_tcp = 0x0006,
+  ip_protocol_udp = 0x0011,
 };
 
 enum sr_ethertype {
@@ -192,7 +194,10 @@ enum sr_arp_hrd_fmt {
 
 enum sr_icmp_type {
     icmp_echo_request = 0x0008,
+    icmp_echo_reply = 0x0000,
 };
+
+
 
 struct sr_arp_hdr
 {

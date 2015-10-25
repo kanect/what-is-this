@@ -213,6 +213,7 @@ void sr_handle_arp(struct sr_instance* sr,
         /*Check if this targets IP is the routers address, if not drop the packet e.g. do nothing*/
         /*print_addr_ip_int(ntohl(arp_header->ar_tip));*/
         struct sr_if *target_interface = (struct sr_if*)sr_get_interface_with_ip(sr, arp_header->ar_tip);
+        
         if(target_interface != 0){
             /*This arp packet is for us*/
             int length = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
@@ -245,7 +246,10 @@ void sr_handle_arp(struct sr_instance* sr,
 
             /*Flips source and target IP and hardware address*/
             
-            memcpy(new_arp_header->ar_sha, target_interface->addr, sizeof(unsigned char) * ETHER_ADDR_LEN);
+            /*Regardless we reply the machine address of the packet receiving interface */
+            struct sr_if *real_interface  = sr_get_interface(sr, interface);
+            
+            memcpy(new_arp_header->ar_sha, real_interface->addr, sizeof(unsigned char) * ETHER_ADDR_LEN);
             memcpy(new_arp_header->ar_tha, arp_header->ar_sha, sizeof(unsigned char) * ETHER_ADDR_LEN);
             new_arp_header->ar_tip = arp_header->ar_sip;
             new_arp_header->ar_sip = arp_header->ar_tip;
@@ -270,7 +274,27 @@ void sr_handle_arp(struct sr_instance* sr,
     }
     return;
 }
-
+/*Makes an IP header*/
+void sr_make_ip_header(uint8_t * buffer, uint8_t tos, uint16_t len, uint8_t protocol, uint32_t ip_src, uint32_t ip_dst)
+{
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) buffer;
+    
+    ip_hdr->ip_v = 4;
+    ip_hdr->ip_hl = sizeof(sr_ip_hdr_t) / 4;
+    ip_hdr->ip_tos = tos;
+    ip_hdr->ip_len = htons(len);
+    ip_hdr->ip_id = 0;
+    ip_hdr->ip_off = 0;
+    ip_hdr->ip_ttl = 0x63;/*99TTL?*/
+    ip_hdr->ip_p = protocol;
+    ip_hdr->ip_src = ip_src;
+    ip_hdr->ip_dst = ip_dst;
+    
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum(buffer, 20);
+    
+    return;
+}
 /*Handles IP packet*/
 void sr_handle_ip(struct sr_instance* sr,
         uint8_t *ethernet_hdr_bits,
@@ -311,16 +335,26 @@ void sr_handle_ip(struct sr_instance* sr,
                 new_ip_header->ip_sum = cksum( buffer + sizeof(sr_ethernet_hdr_t), new_ip_header->ip_hl * 4);
 	
                 sr_icmp_hdr_t* new_icmp_header = (sr_icmp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-                new_icmp_header->icmp_type = 0x0000;/*Reply type*/
+                new_icmp_header->icmp_type = 0x0000;
                 new_icmp_header->icmp_sum = 0;
                 new_icmp_header->icmp_sum = cksum( (void*)new_icmp_header, 8);
                         /*Make ICMP header*/
 
-                print_hdrs(buffer, sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
                 sr_send_packet(sr, buffer, len, interface);
-                fprintf(stderr, "Packet away size: %u \n", sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
                 free(buffer);
             }
+            
+        }
+        else if(ip_protocol_udp || ip_protocol_tcp)
+        {
+            /*Make type 3 icmp port unreachable reply.*/
+            uint8_t* buffer = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
+            
+            sr_make_ip_header(buffer + sizeof(sr_ethernet_hdr_t),
+                                0x0000, sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t),
+                                ip_protocol_icmp, ip_hdr->ip_dst, ip_hdr->ip_src);
+                                
+            print_hdr_ip(buffer + sizeof(sr_ethernet_hdr_t));
             
         }
     }
