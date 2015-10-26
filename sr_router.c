@@ -32,6 +32,9 @@
 void sr_handle_ip();
 int longest_prefix_len();
 struct sr_rt* sr_lpm();
+void forward_packet(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface, struct sr_rt* rt, struct sr_arpentry* entry);
+void sr_send_type11_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface);
+void forward_arp_cache_packet(struct sr_instance *sr, struct sr_packet* packet);
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -267,6 +270,22 @@ void sr_handle_arp(struct sr_instance* sr,
     {
         fprintf(stderr, "ARP response recieved.\n");
         print_hdrs(ethernet_hdr_bits, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+
+
+        /* Caching the ARP reply */
+        struct sr_arpreq *arp_req = sr_arpcache_insert(&sr->cache, arp_header->ar_sha, arp_header->ar_sip);
+
+        /* Checking if IP is in the request queue */
+        if (arp_req != NULL) {
+            struct sr_packet *sr_arpreq_packet_next = arp_req->packets;
+
+            /* Sending all packets bound to this reply */
+            while (sr_arpreq_packet_next != NULL) {
+                forward_arp_cache_packet(sr, sr_arpreq_packet_next);
+                sr_arpreq_packet_next = sr_arpreq_packet_next->next;
+            }
+            sr_arpreq_destroy(&(sr->cache), arp_req);
+        }
     }
     else
     {
@@ -346,7 +365,6 @@ void sr_handle_ip(struct sr_instance* sr,
         char* interface/* lent */)
 {
     sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) ip_hdr_bits;
-    /*TODO: checksum*/
 
     /*Check if IP header meets minimum length. - done as if error is not ignored*/
     if (len - sizeof(sr_ethernet_hdr_t) < sizeof(sr_ip_hdr_t))
@@ -458,6 +476,7 @@ void sr_handle_ip(struct sr_instance* sr,
 					else
 					{
 						/*Forward Packet*/
+						forward_packet(sr, ethernet_hdr_bits, len, interface, target, entry);
 						free(entry);
 					}
 				}
@@ -465,6 +484,64 @@ void sr_handle_ip(struct sr_instance* sr,
 		}
 	}
 	return;
+}
+/*Takes the original incoming packet, and it's length, make and send an
+* ICMP type 3 destination unreachable packet.
+*
+*Parameters:
+*sr_instance *sr: the router
+*uint8_t *buffer: Pointer to the incoming packet
+*uint8_t len: Incoming packet's length
+*char* interface: Incoming packet's interface name
+*sr_rt* entry: The matching routing table entry.
+*/
+void forward_packet(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface, struct sr_rt* rt, struct sr_arpentry* entry)
+{
+    /*Make a duplicate of the packet that we need to forward*/
+    uint8_t* outgoing = malloc(len);
+    memcpy(outgoing, buffer, len);
+
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) (outgoing + sizeof(sr_ethernet_hdr_t));
+    /*Check the ttl before we try forwarding*/
+
+    fprintf(stderr, "FORWARD PACKET CALLED\n");
+    if(ntohs(ip_hdr->ip_ttl) <= 1)
+    {
+        /*Send type11 code 0 response*/
+        sr_send_type11_response(sr, buffer, len, interface);
+        free(outgoing);
+    }
+    else
+    {
+        struct sr_if* outgoing_interface = sr_get_interface(sr, rt->interface);
+
+        sr_ethernet_hdr_t* ethernet_hdr = (sr_ethernet_hdr_t*) outgoing;
+        /*Change the ethernet machine addresses*/
+        memcpy(ethernet_hdr->ether_shost, outgoing_interface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN);
+        memcpy(ethernet_hdr->ether_dhost, entry->mac, sizeof(uint8_t) * ETHER_ADDR_LEN);
+        
+        ip_hdr->ip_ttl = ntohs(ip_hdr->ip_ttl) - ntohs(0x0001);
+
+        ip_hdr->ip_sum = 0;
+        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+    
+        sr_send_packet(sr, outgoing, len, rt->interface);
+        free(outgoing);
+    }
+        
+    
+    return;
+}
+
+void forward_arp_cache_packet(struct sr_instance *sr, struct sr_packet* packet)
+{
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) (packet->buf + sizeof(sr_ethernet_hdr_t));
+    struct sr_rt* target = sr_lpm(sr->routing_table, ip_hdr->ip_dst);
+
+    struct sr_arpentry* entry = sr_arpcache_lookup(&sr->cache, target->gw.s_addr);
+
+    forward_packet(sr, packet->buf, packet->len, packet->iface, target, entry);
+    return;
 }
 
 /*Takes the original incoming packet, and it's length, make and send an
@@ -508,6 +585,47 @@ void sr_send_type3_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len
     free(carry_on_data);    
 }
 
+/*Takes the original incoming packet, and it's length, make and send an
+* ICMP type 11 timeout code packet.
+*
+*Parameters:
+*sr_instance *sr: the router
+*uint8_t *buffer: Pointer to the incoming packet
+*uint8_t len: Incoming packet's length
+*char* interface: Incoming packet's interface name
+*/
+void sr_send_type11_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface)
+{
+    /*Pointers for incoming packet*/
+    sr_ethernet_hdr_t* ether_hdr = (sr_ethernet_hdr_t*)buffer;
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
+
+    int reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t11_hdr_t);
+    
+    /*Pointer to repsonse packet*/
+    uint8_t* response_buffer = malloc(reply_packet_len);
+            
+    
+    struct sr_if* iface_pointer = sr_get_interface(sr, interface);
+    make_ethernet_header(response_buffer, ether_hdr->ether_dhost, ether_hdr->ether_shost, htons(ethertype_ip));
+    sr_make_ip_header(response_buffer + sizeof(sr_ethernet_hdr_t),
+        0x0000, sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t),
+        ip_protocol_icmp, iface_pointer->ip, ip_hdr->ip_src);
+                                
+   /*Type 11 Code 0 Timeout header*/ 
+    uint8_t* carry_on_data = malloc(sizeof(sr_ip_hdr_t)+ 8); 
+    memcpy(carry_on_data, ip_hdr, sizeof(sr_ip_hdr_t) + 8);/*Original ip data + 8 byte of datagram, e.g. first 8 bytes of the After IP headers data field.*/
+      
+    make_icmp_header(response_buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), 11, 0, carry_on_data);
+                                
+            
+    sr_send_packet(sr, response_buffer, reply_packet_len, interface);
+    
+    print_hdrs(response_buffer, reply_packet_len);
+    free(response_buffer);
+    free(carry_on_data);    
+}
+
 /*Routing table lookup
 * variables 
 *    rt: pointer to routing table
@@ -522,18 +640,18 @@ struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip)
     
     /*Record holder routing entry*/
     struct sr_rt *max_routing_entry = NULL;
-    
     /*Since the rotuing able stores the ip in network order, we need to convert to host order before we do longest prefix match.*/
     int temp_num = 0;
     do
     {
-        rt = rt->next; 
-        temp_num = longest_prefix_len(ntohl(rt->dest.s_addr) & rt->mask.s_addr, ntohl(dest_ip));
+        
+        temp_num = longest_prefix_len(ntohl(rt->dest.s_addr) & rt->mask.s_addr, ntohl(dest_ip & rt->mask.s_addr));
         if (temp_num > max_num_match)
         {
             max_num_match = temp_num;
             max_routing_entry = rt;
         }
+        rt = rt->next; 
     }while(rt->next);
     
     return max_routing_entry;
