@@ -274,6 +274,8 @@ void sr_handle_arp(struct sr_instance* sr,
     }
     return;
 }
+
+
 /*Makes an IP header*/
 void sr_make_ip_header(uint8_t * buffer, uint8_t tos, uint16_t len, uint8_t protocol, uint32_t ip_src, uint32_t ip_dst)
 {
@@ -295,6 +297,47 @@ void sr_make_ip_header(uint8_t * buffer, uint8_t tos, uint16_t len, uint8_t prot
     
     return;
 }
+
+/*Replies to an echo request full packet specified by buffer and len.
+*Take a buffer, and it's length and the recieving interface, makes and send a echo reply.
+*/
+void handle_echo_request(struct sr_instance* sr, uint8_t* buffer, uint8_t len, char* iface )
+{
+    sr_ethernet_hdr_t* ether_hdr = (sr_ethernet_hdr_t*) buffer;
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
+    
+    struct sr_if* iface_pointer = sr_get_interface(sr, iface);    
+
+    /*Echo reply needs to be the same size as the request*/
+    uint8_t* response_buffer = malloc(len);
+
+    make_ethernet_header(response_buffer, iface_pointer->addr, ether_hdr->ether_shost, htons(ethertype_ip));
+
+    /*Copy over ip_len length of data to the new ip header*/
+    memcpy(response_buffer + sizeof(sr_ethernet_hdr_t), ip_hdr, ntohs(ip_hdr->ip_len));
+    sr_ip_hdr_t* response_ip_hdr = (sr_ip_hdr_t*) (response_buffer + sizeof(sr_ethernet_hdr_t));
+
+    /*Flip the ip address*/
+    response_ip_hdr->ip_src = ip_hdr->ip_dst;
+    response_ip_hdr->ip_dst = ip_hdr->ip_src;
+
+    /*Calculate ip header checksum*/
+    response_ip_hdr->ip_sum = 0;
+    response_ip_hdr->ip_sum = cksum((uint8_t*) response_ip_hdr, 20);
+
+    /*Change icmp code and recompute checksum*/
+    sr_icmp_hdr_t* response_icmp = (sr_icmp_hdr_t*) (response_buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));    
+    response_icmp->icmp_type = icmp_echo_reply;
+
+    response_icmp->icmp_sum = 0;
+    response_icmp->icmp_sum = cksum((uint8_t*) response_icmp, ntohs(ip_hdr->ip_len) - sizeof(sr_ip_hdr_t));    
+
+    sr_send_packet(sr, response_buffer, len, iface);
+
+    free(response_buffer);
+    
+}
+
 /*Handles IP packet*/
 void sr_handle_ip(struct sr_instance* sr,
         uint8_t *ethernet_hdr_bits,
@@ -303,7 +346,6 @@ void sr_handle_ip(struct sr_instance* sr,
         char* interface/* lent */)
 {
     sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) ip_hdr_bits;
-    sr_ethernet_hdr_t* ether_hdr = (sr_ethernet_hdr_t*) ethernet_hdr_bits;
     /*TODO: checksum*/
     /*Before we do stuff, we need to know is the packet for us*/
     if (sr_get_interface_with_ip(sr, ip_hdr->ip_dst) != 0)
@@ -321,28 +363,7 @@ void sr_handle_ip(struct sr_instance* sr,
             {
                 /*This is a echo request*/
                 /*Makes a reply*/
-                uint8_t* buffer = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + (sizeof(sr_icmp_hdr_t) * 2));
-                make_ethernet_header(buffer, ether_hdr->ether_dhost, ether_hdr->ether_shost, htons( ethertype_ip));
-	
-                memcpy(buffer + sizeof(sr_ethernet_hdr_t), ip_hdr_bits, sizeof(sr_ip_hdr_t) + (2 *sizeof(sr_icmp_hdr_t)));
-		
-                sr_ip_hdr_t* new_ip_header = (sr_ip_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t));
-                sr_ip_hdr_t* old_ip_header = (sr_ip_hdr_t*) ip_hdr_bits;
-                new_ip_header->ip_src = old_ip_header->ip_dst;
-                new_ip_header->ip_dst = old_ip_header->ip_src;        
-                new_ip_header->ip_id = old_ip_header->ip_id;
-                new_ip_header->ip_sum = 0;
-                new_ip_header->ip_sum = cksum( buffer + sizeof(sr_ethernet_hdr_t), new_ip_header->ip_hl * 4);
-	
-                            /*Make ICMP header*/
-                sr_icmp_hdr_t* new_icmp_header = (sr_icmp_hdr_t*) (buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-                new_icmp_header->icmp_type = 0x0000;
-                new_icmp_header->icmp_sum = 0;
-                new_icmp_header->icmp_sum = cksum( (void*)new_icmp_header, 8);
-
-
-                sr_send_packet(sr, buffer, len, interface);
-                free(buffer);
+                handle_echo_request(sr, ethernet_hdr_bits, len, interface);
             }
             
         }
