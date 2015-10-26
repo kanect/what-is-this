@@ -412,8 +412,7 @@ void sr_handle_ip(struct sr_instance* sr,
                     return;
                     
                 }
-                /*J.W.: I beilive there is nothing to be done at this moment in handle ip after the arp_request has be cached*/
-                /*TODO: remove*/
+                handle_arpreq(sr, arp_request);
                 
             }
             else

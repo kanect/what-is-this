@@ -46,7 +46,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *requests)
     time_t now = time(0); /*Get current time*/
     if (difftime(now, requests->sent) > 1.0)
     {
-        if (requests->times_sent >= 5) /*Sent too many times*/
+        if (requests->times_sent >= 4) /*Sent too many times*/
         {
             /*Goes through every packet queued for this request*/
             struct sr_packet *packet_walker = requests->packets;
