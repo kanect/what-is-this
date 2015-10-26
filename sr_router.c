@@ -100,7 +100,7 @@ void sr_handlepacket(struct sr_instance* sr,
  
   /* Ethernet */
 
-  /*TODO: checksum*/
+  
   int minlength = sizeof(sr_ethernet_hdr_t);
   if (len < minlength) {
     fprintf(stderr, "Failed to print ETHERNET header, insufficient length\n");
@@ -347,85 +347,124 @@ void sr_handle_ip(struct sr_instance* sr,
 {
     sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) ip_hdr_bits;
     /*TODO: checksum*/
-    /*Before we do stuff, we need to know is the packet for us*/
-    if (sr_get_interface_with_ip(sr, ip_hdr->ip_dst) != 0)
-    {
-        /*This packet is for us*/
-        fprintf(stderr, "IP packet for us recieved.\n");
-        uint8_t ip_p = ip_protocol(ip_hdr_bits);
-        if (ip_p == ip_protocol_icmp)
-        {
-            /*This is a icmp packet*/
-            fprintf(stderr, "ICMP packet to us received\n");
-            sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(ip_hdr_bits + sizeof(sr_ip_hdr_t));
-            /*TODO: checksum*/            
-            if(icmp_echo_request == icmp_hdr->icmp_type)
-            {
-                /*This is a echo request*/
-                /*Makes a reply*/
-                handle_echo_request(sr, ethernet_hdr_bits, len, interface);
-            }
-            
-        }
-        else if(ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp)
-        {
-            /*Make and Send ICMP type 3 code 3 response*/
-            sr_send_type3_response(sr, ethernet_hdr_bits, len, interface, 3);
-        }
-        else
-        {
-            fprintf(stderr, "Unsupported IP type\n");
-        }
-    }
-    else
-    {
-        /*This packet is not for us, forward it.*/
-        fprintf(stderr, "IP packet not for us recieved.\n");
-        /*Check routing table*/
-        struct sr_rt* target = sr_lpm(sr->routing_table, ip_hdr->ip_dst);
-        if(target == NULL)
-        {
-            /*NO MATCH*/
-            fprintf(stderr, "No match in routing table\n");
-            
-            /*Make ICMP net unreachable packet*/ 
-            /*ICMP type 3 Code 0*/
-            sr_send_type3_response(sr, ethernet_hdr_bits, len, interface, 0);
-        }
-        else
-        {
-            /*Check arp cache*/
-            fprintf(stderr, "Matching entry found\n");
-            sr_print_routing_entry(target);/*TODO: remove*/
-            
-            /*Check ARP cache*/
-            /*According to comments for sr_arpcache_lookup we need to free the struct returned from it, if not null*/
-            struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, target->gw.s_addr);
-            if (entry == NULL)
-            {
-                /*Make arp request to gateway*/
-                struct sr_arpreq *arp_request = sr_arpcache_queuereq(&sr->cache, target->gw.s_addr, ethernet_hdr_bits, len, interface);
-                if(arp_request == NULL)
-                {
-                    /*Something is terribly wrong, sr_arpcache_queuereq failed to behave as defined.*/
-                    fprintf(stderr, "sr_arpcache_queuereq failed\n");
-                    return;
-                    
-                }
-                handle_arpreq(sr, arp_request);
-                
-            }
-            else
-            {
-                /*Forward Packet*/
-                
-                free(entry);
-            }
-        }
-    }
 
+    /*Check if IP header meets minimum length. - done as if error is not ignored*/
+    if (len - sizeof(sr_ethernet_hdr_t) < sizeof(sr_ip_hdr_t))
+	{
+		fprintf(stderr, "IP header does not meet minimum length. \n");
+	}
+	else
+	{
+		/*CHECKSUM - done as if bad checksum is not ignored*/
+		uint16_t temp_sum;
+		temp_sum = ip_hdr->ip_sum;
+		ip_hdr->ip_sum = 0;
+		fprintf(stderr, "Tempsum: %u \n", temp_sum);
 
-    return;
+		if (cksum(ip_hdr, ip_hdr->ip_hl*4) != temp_sum)
+		{
+			fprintf(stderr,"Checksum does not match : expected: %u actual: %u .\n", temp_sum, cksum(ip_hdr, ip_hdr->ip_hl*4));
+		}
+
+		else
+		{
+			/*Before we do stuff, we need to know is the packet for us*/
+
+			if (sr_get_interface_with_ip(sr, ip_hdr->ip_dst) != 0)
+			{
+				/*This packet is for us*/
+				fprintf(stderr, "IP packet for us recieved.\n");
+				uint8_t ip_p = ip_protocol(ip_hdr_bits);
+
+				if (ip_p == ip_protocol_icmp)
+				{
+					/*This is a icmp packet*/
+					fprintf(stderr, "ICMP packet to us received\n");
+					sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(ip_hdr_bits + sizeof(sr_ip_hdr_t));
+
+					/*CHECKSUM - done as if bad checksums are just ignored*/
+					uint16_t temp_icmp_sum;
+					temp_icmp_sum = icmp_hdr->icmp_sum;
+					icmp_hdr->icmp_sum = 0;
+					if (cksum(icmp_hdr, sizeof(sr_icmp_hdr_t)) == temp_icmp_sum)
+					{
+						if(icmp_echo_request == icmp_hdr->icmp_type)
+						{
+							/*This is a echo request*/
+							/*Makes a reply*/
+							handle_echo_request(sr, ethernet_hdr_bits, len, interface);
+						}
+					}
+				}
+				else if(ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp)
+				{
+					/*Make and Send ICMP type 3 code 3 response*/
+					sr_send_type3_response(sr, ethernet_hdr_bits, len, interface, 3);
+				}
+
+				else
+				{
+					fprintf(stderr, "Unsupported IP type\n");
+				}
+			}
+
+			else
+			{
+				/*This packet is not for us, forward it.*/
+				fprintf(stderr, "IP packet not for us recieved.\n");
+
+				/*Decrement TTL by 1 and recalculate checksum*/
+				ip_hdr->ip_ttl -= 1;
+				ip_hdr->ip_sum = 0;
+				ip_hdr->ip_sum = cksum(ip_hdr, ip_hdr->ip_hl*4);
+
+				/*Check routing table*/
+				struct sr_rt* target = sr_lpm(sr->routing_table, ip_hdr->ip_dst);
+
+				if(target == NULL)
+				{
+					/*NO MATCH*/
+					fprintf(stderr, "No match in routing table\n");
+					/*Make ICMP net unreachable packet*/ 
+					/*ICMP type 3 Code 0*/
+					sr_send_type3_response(sr, ethernet_hdr_bits, len, interface, 0);
+				}
+
+				else
+				{
+					/*Check arp cache*/
+					fprintf(stderr, "Matching entry found\n");
+					sr_print_routing_entry(target);/*TODO: remove*/
+
+					/*Check ARP cache*/
+					/*According to comments for sr_arpcache_lookup we need to free the struct returned from it, if not null*/
+					struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, target->gw.s_addr);
+
+					if (entry == NULL)
+					{
+						/*Make arp request to gateway*/
+						struct sr_arpreq *arp_request = sr_arpcache_queuereq(&sr->cache, target->gw.s_addr,
+															ethernet_hdr_bits, len, interface);
+						
+						if(arp_request == NULL)
+						{
+							/*Something is terribly wrong, sr_arpcache_queuereq failed to behave as defined.*/
+							fprintf(stderr, "sr_arpcache_queuereq failed\n");
+							return;
+						}
+						handle_arpreq(sr, arp_request);
+					}
+
+					else
+					{
+						/*Forward Packet*/
+						free(entry);
+					}
+				}
+			}
+		}
+	}
+	return;
 }
 
 /*Takes the original incoming packet, and it's length, make and send an
