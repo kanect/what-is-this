@@ -32,8 +32,8 @@
 void sr_handle_ip();
 int longest_prefix_len();
 struct sr_rt* sr_lpm();
-void forward_packet(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface, struct sr_rt* rt, struct sr_arpentry* entry);
-void sr_send_type11_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface);
+void forward_packet(struct sr_instance *sr, uint8_t* buffer, unsigned int len, char* interface, struct sr_rt* rt, struct sr_arpentry* entry);
+void sr_send_type11_response(struct sr_instance *sr, uint8_t* buffer, unsigned int len, char* interface);
 void forward_arp_cache_packet(struct sr_instance *sr, struct sr_packet* packet);
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
@@ -269,7 +269,6 @@ void sr_handle_arp(struct sr_instance* sr,
     else if (arp_op== arp_op_reply)
     {
         fprintf(stderr, "ARP response recieved.\n");
-        print_hdrs(ethernet_hdr_bits, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
 
 
         /* Caching the ARP reply */
@@ -485,18 +484,21 @@ void sr_handle_ip(struct sr_instance* sr,
 *char* interface: Incoming packet's interface name
 *sr_rt* entry: The matching routing table entry.
 */
-void forward_packet(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface, struct sr_rt* rt, struct sr_arpentry* entry)
+void forward_packet(struct sr_instance *sr, uint8_t* buffer, unsigned int len, char* interface, struct sr_rt* rt, struct sr_arpentry* entry)
 {
     /*Make a duplicate of the packet that we need to forward*/
+    
+    
+
     uint8_t* outgoing = malloc(len);
     memcpy(outgoing, buffer, len);
-
     sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*) (outgoing + sizeof(sr_ethernet_hdr_t));
     /*Check the ttl before we try forwarding*/
 
     fprintf(stderr, "FORWARD PACKET CALLED\n");
     if(ntohs(ip_hdr->ip_ttl) <= 1)
     {
+       
         /*Send type11 code 0 response*/
         sr_send_type11_response(sr, buffer, len, interface);
         free(outgoing);
@@ -509,12 +511,11 @@ void forward_packet(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* 
         /*Change the ethernet machine addresses*/
         memcpy(ethernet_hdr->ether_shost, outgoing_interface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN);
         memcpy(ethernet_hdr->ether_dhost, entry->mac, sizeof(uint8_t) * ETHER_ADDR_LEN);
-        
-        ip_hdr->ip_ttl = ntohs(ip_hdr->ip_ttl) - ntohs(0x0001);
-
+        ip_hdr->ip_ttl = ip_hdr->ip_ttl - 0x0001;
         ip_hdr->ip_sum = 0;
         ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
-    
+        print_hdrs(outgoing, len);
+        fprintf(stderr, "packet legnth:%u", len);
         sr_send_packet(sr, outgoing, len, rt->interface);
         free(outgoing);
     }
@@ -570,7 +571,6 @@ void sr_send_type3_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len
             
     sr_send_packet(sr, response_buffer, reply_packet_len, interface);
     
-    print_hdrs(response_buffer, reply_packet_len);
     free(response_buffer);
     free(carry_on_data);    
 }
@@ -584,7 +584,7 @@ void sr_send_type3_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len
 *uint8_t len: Incoming packet's length
 *char* interface: Incoming packet's interface name
 */
-void sr_send_type11_response(struct sr_instance *sr, uint8_t* buffer, uint8_t len, char* interface)
+void sr_send_type11_response(struct sr_instance *sr, uint8_t* buffer, unsigned int len, char* interface)
 {
     /*Pointers for incoming packet*/
     sr_ethernet_hdr_t* ether_hdr = (sr_ethernet_hdr_t*)buffer;
