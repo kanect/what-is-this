@@ -398,21 +398,11 @@ void sr_handle_ip(struct sr_instance* sr,
 				{
 					/*This is a icmp packet*/
 					fprintf(stderr, "ICMP packet to us received\n");
-					sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(ip_hdr_bits + sizeof(sr_ip_hdr_t));
 
-					/*CHECKSUM - done as if bad checksums are just ignored*/
-					uint16_t temp_icmp_sum;
-					temp_icmp_sum = icmp_hdr->icmp_sum;
-					icmp_hdr->icmp_sum = 0;
-					if (cksum(icmp_hdr, sizeof(sr_icmp_hdr_t)) == temp_icmp_sum)
-					{
-						if(icmp_echo_request == icmp_hdr->icmp_type)
-						{
-							/*This is a echo request*/
-							/*Makes a reply*/
-							handle_echo_request(sr, ethernet_hdr_bits, len, interface);
-						}
-					}
+					/*This is a echo request*/
+					/*Makes a reply*/
+					handle_echo_request(sr, ethernet_hdr_bits, len, interface);
+
 				}
 				else if(ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp)
 				{
@@ -646,13 +636,14 @@ struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip)
     {
         
         temp_num = longest_prefix_len(ntohl(rt->dest.s_addr) & rt->mask.s_addr, ntohl(dest_ip & rt->mask.s_addr));
+        fprintf(stderr, "Match num:%u\n", temp_num);
         if (temp_num > max_num_match)
         {
             max_num_match = temp_num;
             max_routing_entry = rt;
         }
         rt = rt->next; 
-    }while(rt->next);
+    }while(rt);
     
     return max_routing_entry;
 }
