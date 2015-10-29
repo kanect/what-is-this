@@ -299,7 +299,7 @@ void sr_make_ip_header(uint8_t * buffer, uint8_t tos, uint16_t len, uint8_t prot
     ip_hdr->ip_tos = tos;
     ip_hdr->ip_len = htons(len);
     ip_hdr->ip_id = 0;
-    ip_hdr->ip_off = 0;
+    ip_hdr->ip_off = 0x40;
     ip_hdr->ip_ttl = 0x63;/*99TTL?*/
     ip_hdr->ip_p = protocol;
     ip_hdr->ip_src = ip_src;
