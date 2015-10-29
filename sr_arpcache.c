@@ -72,8 +72,21 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *requests)
             {
             /*Lookup in routing table for the interface to send the arp request from*/
                 struct sr_rt* target = (struct sr_rt*)sr_lpm(sr->routing_table, requests->ip);
-                char *if_name_pointer = target->interface;
-                struct sr_if* interface = sr_get_interface(sr, if_name_pointer);
+                struct sr_if* interface;
+                char *if_name_pointer;
+                if(target == NULL)
+                {
+                	/*LPM lookup failed*/ /*Use the default entry*/
+                	target = sr->routing_table;
+                	interface = sr->if_list;
+                	if_name_pointer = sr->if_list->name;
+                }
+                else
+                {
+                	if_name_pointer = target->interface;
+                	interface = sr_get_interface(sr, if_name_pointer);
+                }
+
                     
                 /*TODO:figure out something better*/
                 uint8_t boardcast_addr[ETHER_ADDR_LEN] = "000000";
