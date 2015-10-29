@@ -634,8 +634,12 @@ struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip)
     int temp_num = 0;
     do
     {
-        
-        temp_num = longest_prefix_len(ntohl(rt->dest.s_addr) & rt->mask.s_addr, ntohl(dest_ip & rt->mask.s_addr));
+
+        if(ntohl(rt->dest.s_addr  & rt->mask.s_addr) == ntohl(dest_ip & rt->mask.s_addr) )
+        {
+        	/*Count the number of leading 1 in the subnet mask*/
+        	temp_num = __builtin_clz(!ntohl(rt->mask.s_addr));
+        }
         fprintf(stderr, "Match num:%u\n", temp_num);
         if (temp_num > max_num_match)
         {
@@ -646,24 +650,4 @@ struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip)
     }while(rt);
     
     return max_routing_entry;
-}
-
-/* Longest prefix match
-* Compares the two in_addr, and return the maximum number of bytes of matching prefixes.
-* NOTE: parameters needs to be in host order.
-*Returns the number the maximum number of bytes of matching prefixes.
-*/
-int longest_prefix_len(uint32_t addr1, uint32_t addr2)
-{
-    
-    int max_byte_match = 0;
-    
-    /*Using xor bit wise operator, so that if addr1[x] and addr2[x] have different bits,
-      *xor_product[x] will be one, otherwise, if addr1[x] == addr2[x], xor_product[x] will be 0.
-      */
-    uint32_t xor_product = addr1 ^ addr2;
-    
-    /*count the leading zeroes*/
-    max_byte_match = __builtin_clz(xor_product);
-    return max_byte_match;
 }
