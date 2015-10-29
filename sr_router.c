@@ -420,8 +420,6 @@ void sr_handle_ip(struct sr_instance* sr,
 				/*This packet is not for us, forward it.*/
 				fprintf(stderr, "IP packet not for us recieved.\n");
 
-				/*Decrement TTL by 1 and recalculate checksum*/
-				ip_hdr->ip_ttl -= 1;
 				ip_hdr->ip_sum = 0;
 				ip_hdr->ip_sum = cksum(ip_hdr, ip_hdr->ip_hl*4);
 
@@ -496,7 +494,7 @@ void forward_packet(struct sr_instance *sr, uint8_t* buffer, unsigned int len, c
     /*Check the ttl before we try forwarding*/
 
     fprintf(stderr, "FORWARD PACKET CALLED\n");
-    if(ntohs(ip_hdr->ip_ttl) <= 1)
+    if(ip_hdr->ip_ttl <= 1)
     {
        
         /*Send type11 code 0 response*/
@@ -511,7 +509,9 @@ void forward_packet(struct sr_instance *sr, uint8_t* buffer, unsigned int len, c
         /*Change the ethernet machine addresses*/
         memcpy(ethernet_hdr->ether_shost, outgoing_interface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN);
         memcpy(ethernet_hdr->ether_dhost, entry->mac, sizeof(uint8_t) * ETHER_ADDR_LEN);
+        fprintf(stderr, "TTL BEfore: %u\n", ip_hdr->ip_ttl);
         ip_hdr->ip_ttl = ip_hdr->ip_ttl - 0x0001;
+        fprintf(stderr, "TTL After: %u\n", ip_hdr->ip_ttl);
         ip_hdr->ip_sum = 0;
         ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
         print_hdrs(outgoing, len);
