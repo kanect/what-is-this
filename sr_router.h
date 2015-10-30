@@ -73,7 +73,7 @@ void make_arp_header(uint8_t*, unsigned short);
 void make_ethernet_header(uint8_t*, uint8_t*, uint8_t*, uint16_t);
 struct sr_rt* sr_lpm(struct sr_rt *rt, uint32_t dest_ip);
 
-void sr_send_type3_response(struct sr_instance*, uint8_t*, uint8_t, char*, uint8_t);
+void sr_send_type3_response(struct sr_instance*, uint8_t*, uint16_t, char*, uint8_t);
 void sr_handle_arp(struct sr_instance*, uint8_t*, uint8_t *, char*);
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance* , const char* );

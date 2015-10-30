@@ -163,7 +163,7 @@ void make_icmp_header(uint8_t* buffer, uint8_t type, uint8_t code, uint8_t data[
 	sr_icmp_t0_hdr_t *icmp_hdr = (sr_icmp_t0_hdr_t*) buffer;
 	icmp_hdr->icmp_type = type;
 	icmp_hdr->icmp_code = code;
-        icmp_hdr->icmp_id = 0;
+    icmp_hdr->icmp_id = 0;
 	icmp_hdr->icmp_seq_num = 0;
 	/*Set checksum to 0, recalculate and reset.*/
 	icmp_hdr->icmp_sum = 0;
