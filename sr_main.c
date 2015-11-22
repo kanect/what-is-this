@@ -54,6 +54,13 @@ static void sr_load_rt_wrap(struct sr_instance* sr, char* rtable);
 /*-----------------------------------------------------------------------------
  *---------------------------------------------------------------------------*/
 
+/*
+    NAT
+*/
+#define DEFAULT_ICMP_QUERY_TIMEOUT = 60;
+#define DEFAULT_TCP_ESTABLISHED_TIMEOUT = 7440;
+#define DEFAULT_TCP_TRANSITORY_TIMEOUT = 300;
+
 int main(int argc, char **argv)
 {
     int c;
@@ -67,9 +74,12 @@ int main(int argc, char **argv)
     char *logfile = 0;
     struct sr_instance sr;
 
+    /* 1: NAT enabled; 0: NAT not enabled */
+    int nat_enabled = 0;
+
     printf("Using %s\n", VERSION_INFO);
 
-    while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:")) != EOF)
+    while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:n:I:E:R")) != EOF)
     {
         switch (c)
         {
@@ -101,11 +111,32 @@ int main(int argc, char **argv)
             case 'T':
                 template = optarg;
                 break;
+            case 'n':
+                nat_enabled = 1;
+                break;
+            case 'I':
+                int icmp_query_timeout = atoi((char *) optarg);
+                break;
+            case 'E':
+                int tcp_established_timeout = atoi((char *) optarg);
+                break;
+            case 'R':
+                int tcp_transitory_timeout = atoi((char *) optarg);
+                break;
+
         } /* switch */
     } /* -- while -- */
 
     /* -- zero out sr instance -- */
     sr_init_instance(&sr);
+
+    /* NAT is enabled */
+    if (nat_enabled == 1) {
+        struct sr_nat nat;
+        nat.ICMP_query_timout = icmp_query_timeout;
+        nat.TCP_established_timeout = tcp_established_timeout;
+        nat.TCP_transitory_timeout = tcp_transitory_timeout;
+    };
 
     /* -- set up routing table from file -- */
     if(template == NULL) {
@@ -166,6 +197,7 @@ int main(int argc, char **argv)
 
     return 0;
 }/* -- main -- */
+
 
 /*-----------------------------------------------------------------------------
  * Method: usage(..)
