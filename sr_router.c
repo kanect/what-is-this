@@ -22,7 +22,6 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
-
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,6 +33,8 @@ struct sr_rt* sr_lpm();
 void forward_packet(struct sr_instance *sr, uint8_t* buffer, unsigned int len, char* interface, struct sr_rt* rt, struct sr_arpentry* entry);
 void sr_send_type11_response(struct sr_instance *sr, uint8_t* buffer, unsigned int len, char* interface);
 void forward_arp_cache_packet(struct sr_instance *sr, struct sr_packet* packet);
+
+
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -46,9 +47,11 @@ void sr_init(struct sr_instance* sr)
 {
     /* REQUIRES */
     assert(sr);
-
+    
     /* Initialize cache and cache cleanup thread */
     sr_arpcache_init(&(sr->cache));
+    sr_nat_init(&(sr->nat_cache));
+
 
     pthread_attr_init(&(sr->attr));
     pthread_attr_setdetachstate(&(sr->attr), PTHREAD_CREATE_JOINABLE);
